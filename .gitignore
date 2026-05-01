@@ -1,0 +1,9 @@
+/.softi/
+/.cursor/
+/.claude/
+/.codex/
+/.gemini/
+.idea/
+backend/target/
+frontend/node_modules/
+frontend/dist/

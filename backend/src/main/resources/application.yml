@@ -1,0 +1,35 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    # Default: H2 in-memory. Set POSTGRES_URL/USER/PASSWORD env vars to switch to PostgreSQL.
+    url: ${POSTGRES_URL:jdbc:h2:mem:ecotrackdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE}
+    username: ${POSTGRES_USER:sa}
+    password: ${POSTGRES_PASSWORD:}
+    driver-class-name: ${DB_DRIVER:org.h2.Driver}
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    defer-datasource-initialization: true
+    properties:
+      hibernate:
+        dialect: ${DB_DIALECT:org.hibernate.dialect.H2Dialect}
+        format_sql: false
+  sql:
+    init:
+      mode: always
+
+cors:
+  allowed-origin: http://localhost:3000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
