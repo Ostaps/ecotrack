@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { getLiveShipments } from '../api/shipments';
 import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -70,6 +70,10 @@ export default function LiveMap() {
   const [totalCo2, setTotalCo2] = useState(0);
   const [flyTarget, setFlyTarget] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const popupViewportPadding = {
+    topLeft: [isSidebarOpen ? 360 : 24, 24],
+    bottomRight: [344, 24]
+  };
 
   const fetchData = async () => {
     try {
@@ -85,9 +89,14 @@ export default function LiveMap() {
   };
 
   useEffect(() => {
-    fetchData();
+    const initialFetch = window.setTimeout(() => {
+      void fetchData();
+    }, 0);
     const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
+    return () => {
+      window.clearTimeout(initialFetch);
+      clearInterval(interval);
+    };
   }, []);
 
   const getPolylineColor = (fuelType, mode) => {
@@ -158,7 +167,12 @@ export default function LiveMap() {
                 position={[s.originLat, s.originLon]}
                 icon={createCustomIcon(s.transportMode, s.vehicleFuelType, s.status)}
               >
-                <Popup>
+                <Popup
+                  autoPan
+                  keepInView
+                  autoPanPaddingTopLeft={popupViewportPadding.topLeft}
+                  autoPanPaddingBottomRight={popupViewportPadding.bottomRight}
+                >
                   <div className="bg-white/95 backdrop-blur-md border border-gray-200 p-4 rounded-xl shadow-2xl text-gray-900 w-64">
                     <div className="flex justify-between items-start mb-2">
                       <span className="text-xs font-bold text-gray-500 font-mono">{s.trackingId}</span>
