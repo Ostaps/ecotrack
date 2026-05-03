@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { getLiveShipments } from '../api/shipments';
 import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -22,7 +22,37 @@ function MapFlyTo({ target }) {
   return null;
 }
 
-const createCustomIcon = (mode, fuelType, status) => {
+function ShipmentPopupContent({ shipment }) {
+  return (
+    <div className="bg-white/95 backdrop-blur-md border border-gray-200 p-4 rounded-xl shadow-2xl text-gray-900 w-64">
+      <div className="flex justify-between items-start mb-2">
+        <span className="text-xs font-bold text-gray-500 font-mono">{shipment.trackingId}</span>
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${shipment.status === 'IN_TRANSIT' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
+          {shipment.status}
+        </span>
+      </div>
+      <div className="mb-3 font-medium text-gray-900">
+        {shipment.origin} <span className="text-gray-400 mx-1">&rarr;</span> {shipment.destination}
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+        <div>
+          <div className="text-gray-500">Vehicle</div>
+          <div className="font-semibold text-gray-900">{shipment.vehicleModel || 'N/A'}</div>
+        </div>
+        <div>
+          <div className="text-gray-500">Payload</div>
+          <div className="font-semibold text-gray-900">{shipment.payloadTons} t</div>
+        </div>
+      </div>
+      <div className="bg-gray-50 p-2 rounded-lg flex justify-between items-center border border-gray-100">
+        <span className="text-xs text-gray-500">Est. Carbon</span>
+        <span className="font-bold text-green-600">{shipment.calculatedCo2} kg</span>
+      </div>
+    </div>
+  );
+}
+
+const createCustomIcon = (mode, fuelType, status, markerRole, ariaLabel) => {
   let IconComponent = Truck;
   if (mode === 'AIR') IconComponent = Plane;
   if (mode === 'SEA') IconComponent = Ship;
@@ -47,10 +77,28 @@ const createCustomIcon = (mode, fuelType, status) => {
     pulseClass = '';
   }
 
+  const isDestination = markerRole === 'destination';
+  const containerShapeClass = isDestination
+    ? 'rounded-2xl border-2 border-dashed'
+    : 'rounded-full border-2';
+  const roleBadgeClass = isDestination
+    ? 'bg-gray-900 text-white'
+    : 'bg-white text-gray-600 border border-gray-200';
+  const roleBadgeText = isDestination ? 'END' : 'ORG';
+
   const iconMarkup = renderToStaticMarkup(
-    <div className={`flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-lg border-2 ${colorClass.replace('text', 'border')} ${pulseClass}`}>
-      <div className={`w-8 h-8 rounded-full ${bgClass} flex items-center justify-center`}>
-        <IconComponent className={colorClass} size={18} />
+    <div
+      role="img"
+      aria-label={ariaLabel}
+      className="flex flex-col items-center"
+    >
+      <div className={`flex items-center justify-center w-10 h-10 bg-white shadow-lg ${containerShapeClass} ${colorClass.replace('text', 'border')} ${pulseClass}`}>
+        <div className={`w-8 h-8 rounded-full ${bgClass} flex items-center justify-center`}>
+          <IconComponent className={colorClass} size={18} />
+        </div>
+      </div>
+      <div className={`mt-1 px-1.5 py-0.5 rounded-full text-[9px] font-black tracking-[0.18em] ${roleBadgeClass}`}>
+        {roleBadgeText}
       </div>
     </div>
   );
@@ -58,11 +106,13 @@ const createCustomIcon = (mode, fuelType, status) => {
   return L.divIcon({
     html: iconMarkup,
     className: 'custom-leaflet-icon',
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
-    popupAnchor: [0, -20]
+    iconSize: [48, 54],
+    iconAnchor: [24, 28],
+    popupAnchor: [0, -28]
   });
 };
+
+const hasCoordinates = (lat, lon) => Number.isFinite(lat) && Number.isFinite(lon);
 
 export default function LiveMap() {
   const [shipments, setShipments] = useState([]);
@@ -85,9 +135,14 @@ export default function LiveMap() {
   };
 
   useEffect(() => {
-    fetchData();
+    const initialFetch = setTimeout(() => {
+      void fetchData();
+    }, 0);
     const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialFetch);
+      clearInterval(interval);
+    };
   }, []);
 
   const getPolylineColor = (fuelType, mode) => {
@@ -156,36 +211,34 @@ export default function LiveMap() {
               
               <Marker 
                 position={[s.originLat, s.originLon]}
-                icon={createCustomIcon(s.transportMode, s.vehicleFuelType, s.status)}
+                icon={createCustomIcon(
+                  s.transportMode,
+                  s.vehicleFuelType,
+                  s.status,
+                  'origin',
+                  `Origin: ${s.origin}`
+                )}
               >
                 <Popup>
-                  <div className="bg-white/95 backdrop-blur-md border border-gray-200 p-4 rounded-xl shadow-2xl text-gray-900 w-64">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="text-xs font-bold text-gray-500 font-mono">{s.trackingId}</span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.status === 'IN_TRANSIT' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
-                        {s.status}
-                      </span>
-                    </div>
-                    <div className="mb-3 font-medium text-gray-900">
-                      {s.origin} <span className="text-gray-400 mx-1">&rarr;</span> {s.destination}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-                      <div>
-                        <div className="text-gray-500">Vehicle</div>
-                        <div className="font-semibold text-gray-900">{s.vehicleModel || 'N/A'}</div>
-                      </div>
-                      <div>
-                        <div className="text-gray-500">Payload</div>
-                        <div className="font-semibold text-gray-900">{s.payloadTons} t</div>
-                      </div>
-                    </div>
-                    <div className="bg-gray-50 p-2 rounded-lg flex justify-between items-center border border-gray-100">
-                      <span className="text-xs text-gray-500">Est. Carbon</span>
-                      <span className="font-bold text-green-600">{s.calculatedCo2} kg</span>
-                    </div>
-                  </div>
+                  <ShipmentPopupContent shipment={s} />
                 </Popup>
               </Marker>
+              {hasCoordinates(s.destinationLat, s.destinationLon) && (
+                <Marker
+                  position={[s.destinationLat, s.destinationLon]}
+                  icon={createCustomIcon(
+                    s.transportMode,
+                    s.vehicleFuelType,
+                    s.status,
+                    'destination',
+                    `Destination: ${s.destination}`
+                  )}
+                >
+                  <Popup>
+                    <ShipmentPopupContent shipment={s} />
+                  </Popup>
+                </Marker>
+              )}
             </div>
           );
         })}
