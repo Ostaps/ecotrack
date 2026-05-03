@@ -45,6 +45,9 @@
   }
 
   /* Custom Leaflet Popup Overrides */
+  .leaflet-popup-content {
+    @apply m-0;
+  }
   .leaflet-popup-content-wrapper {
     @apply bg-transparent shadow-none border-none p-0;
   }
@@ -52,4 +55,3 @@
     @apply hidden;
   }
 }
-
