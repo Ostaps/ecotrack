@@ -1,9 +1,10 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { getLiveShipments } from '../api/shipments';
-import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Polyline, Marker, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Loader2, Truck, Plane, Ship, Train, Activity, Navigation, List } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Loader2, Truck, Plane, Ship, Train, Activity, Navigation, List, X } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -59,10 +60,136 @@ const createCustomIcon = (mode, fuelType, status) => {
     html: iconMarkup,
     className: 'custom-leaflet-icon',
     iconSize: [40, 40],
-    iconAnchor: [20, 20],
-    popupAnchor: [0, -20]
+    iconAnchor: [20, 20]
   });
 };
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getOverlayLayout(containerRect, point) {
+  const overlayWidth = 320;
+  const overlayHeight = 208;
+  const gap = 18;
+  const mapWidth = containerRect.width;
+  const mapHeight = containerRect.height;
+  const isDesktop = mapWidth >= 1280;
+  const reservedLeft = isDesktop ? 344 : 24;
+  const reservedRight = isDesktop ? 344 : 24;
+  const reservedTop = isDesktop ? 124 : 24;
+  const reservedBottom = 24;
+
+  const fitsAbove = point.y - overlayHeight - gap >= reservedTop;
+  const leftSpace = point.x - reservedLeft;
+  const rightSpace = mapWidth - reservedRight - point.x;
+
+  const placement = fitsAbove
+    ? 'top'
+    : rightSpace >= overlayWidth + gap
+      ? 'right'
+      : leftSpace >= overlayWidth + gap
+        ? 'left'
+        : 'bottom';
+
+  let left = point.x - overlayWidth / 2;
+  let top = point.y - overlayHeight - gap;
+  let arrowClass = 'shipment-popup-arrow shipment-popup-arrow-bottom';
+  let arrowStyle = { left: '50%' };
+
+  if (placement === 'right') {
+    left = point.x + gap;
+    top = point.y - overlayHeight / 2;
+    arrowClass = 'shipment-popup-arrow shipment-popup-arrow-left';
+    arrowStyle = { left: '-10px', top: '50%' };
+  } else if (placement === 'left') {
+    left = point.x - overlayWidth - gap;
+    top = point.y - overlayHeight / 2;
+    arrowClass = 'shipment-popup-arrow shipment-popup-arrow-right';
+    arrowStyle = { right: '-10px', top: '50%' };
+  } else if (placement === 'bottom') {
+    left = point.x - overlayWidth / 2;
+    top = point.y + gap;
+    arrowClass = 'shipment-popup-arrow shipment-popup-arrow-top';
+    arrowStyle = { left: '50%', top: '-10px' };
+  }
+
+  left = clamp(left, reservedLeft, Math.max(reservedLeft, mapWidth - reservedRight - overlayWidth));
+  top = clamp(top, reservedTop, Math.max(reservedTop, mapHeight - reservedBottom - overlayHeight));
+
+  return {
+    left,
+    top,
+    arrowClass,
+    arrowStyle,
+  };
+}
+
+function ShipmentPopupOverlay({ shipment, onClose }) {
+  const [, forceUpdate] = useState(0);
+  const map = useMapEvents({
+    move: () => forceUpdate((value) => value + 1),
+    zoom: () => forceUpdate((value) => value + 1),
+    resize: () => forceUpdate((value) => value + 1),
+    click: () => onClose(),
+  });
+
+  if (!shipment) {
+    return null;
+  }
+
+  const container = map.getContainer();
+  const point = map.latLngToContainerPoint([shipment.originLat, shipment.originLon]);
+  const { left, top, arrowClass, arrowStyle } = getOverlayLayout(container.getBoundingClientRect(), point);
+
+  return createPortal(
+    <div
+      className="shipment-popup-overlay"
+      style={{ left: `${left}px`, top: `${top}px` }}
+      role="dialog"
+      aria-label={`Shipment details for ${shipment.trackingId}`}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="shipment-popup-close"
+        aria-label="Close shipment details"
+      >
+        <X size={16} />
+      </button>
+
+      <div className="pr-8">
+        <div className="flex justify-between items-start mb-2 gap-2">
+          <span className="text-xs font-bold text-gray-500 font-mono">{shipment.trackingId}</span>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${shipment.status === 'IN_TRANSIT' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
+            {shipment.status}
+          </span>
+        </div>
+        <div className="mb-3 font-medium text-gray-900">
+          {shipment.origin} <span className="text-gray-400 mx-1">&rarr;</span> {shipment.destination}
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+          <div>
+            <div className="text-gray-500">Vehicle</div>
+            <div className="font-semibold text-gray-900">{shipment.vehicleModel || 'N/A'}</div>
+          </div>
+          <div>
+            <div className="text-gray-500">Payload</div>
+            <div className="font-semibold text-gray-900">{shipment.payloadTons} t</div>
+          </div>
+        </div>
+        <div className="bg-gray-50 p-2 rounded-lg flex justify-between items-center border border-gray-100">
+          <span className="text-xs text-gray-500">Est. Carbon</span>
+          <span className="font-bold text-green-600">{shipment.calculatedCo2} kg</span>
+        </div>
+      </div>
+
+      <div className={arrowClass} style={arrowStyle} />
+    </div>,
+    container
+  );
+}
 
 export default function LiveMap() {
   const [shipments, setShipments] = useState([]);
@@ -70,6 +197,7 @@ export default function LiveMap() {
   const [totalCo2, setTotalCo2] = useState(0);
   const [flyTarget, setFlyTarget] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [selectedShipmentId, setSelectedShipmentId] = useState(null);
 
   const fetchData = async () => {
     try {
@@ -85,9 +213,14 @@ export default function LiveMap() {
   };
 
   useEffect(() => {
-    fetchData();
+    const initialFetchTimer = setTimeout(() => {
+      void fetchData();
+    }, 0);
     const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialFetchTimer);
+      clearInterval(interval);
+    };
   }, []);
 
   const getPolylineColor = (fuelType, mode) => {
@@ -99,7 +232,10 @@ export default function LiveMap() {
 
   const handleRouteClick = (s) => {
     setFlyTarget({ lat: s.originLat, lng: s.originLon });
+    setSelectedShipmentId(s.id);
   };
+
+  const selectedShipment = shipments.find((shipment) => shipment.id === selectedShipmentId) ?? null;
 
   if (loading && shipments.length === 0) {
     return (
@@ -157,38 +293,18 @@ export default function LiveMap() {
               <Marker 
                 position={[s.originLat, s.originLon]}
                 icon={createCustomIcon(s.transportMode, s.vehicleFuelType, s.status)}
+                eventHandlers={{
+                  click: () => setSelectedShipmentId(s.id),
+                }}
               >
-                <Popup>
-                  <div className="bg-white/95 backdrop-blur-md border border-gray-200 p-4 rounded-xl shadow-2xl text-gray-900 w-64">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="text-xs font-bold text-gray-500 font-mono">{s.trackingId}</span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.status === 'IN_TRANSIT' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
-                        {s.status}
-                      </span>
-                    </div>
-                    <div className="mb-3 font-medium text-gray-900">
-                      {s.origin} <span className="text-gray-400 mx-1">&rarr;</span> {s.destination}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-                      <div>
-                        <div className="text-gray-500">Vehicle</div>
-                        <div className="font-semibold text-gray-900">{s.vehicleModel || 'N/A'}</div>
-                      </div>
-                      <div>
-                        <div className="text-gray-500">Payload</div>
-                        <div className="font-semibold text-gray-900">{s.payloadTons} t</div>
-                      </div>
-                    </div>
-                    <div className="bg-gray-50 p-2 rounded-lg flex justify-between items-center border border-gray-100">
-                      <span className="text-xs text-gray-500">Est. Carbon</span>
-                      <span className="font-bold text-green-600">{s.calculatedCo2} kg</span>
-                    </div>
-                  </div>
-                </Popup>
               </Marker>
             </div>
           );
         })}
+        <ShipmentPopupOverlay
+          shipment={selectedShipment}
+          onClose={() => setSelectedShipmentId(null)}
+        />
       </MapContainer>
 
       {/* Top Right Stats Overlay */}
