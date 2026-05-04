@@ -1,5 +1,7 @@
 package com.ecotrack.controller;
 
+import com.ecotrack.dto.ScenarioComparisonRequestDTO;
+import com.ecotrack.dto.ScenarioComparisonResponseDTO;
 import com.ecotrack.dto.ShipmentDTO;
 import com.ecotrack.dto.ShipmentDetailDTO;
 import com.ecotrack.model.enums.ShipmentStatus;
@@ -36,6 +38,11 @@ public class ShipmentController {
     @PostMapping
     public ResponseEntity<ShipmentDTO> create(@RequestBody ShipmentDTO dto) {
         return ResponseEntity.status(201).body(shipmentService.create(dto));
+    }
+
+    @PostMapping("/scenario-comparisons")
+    public ScenarioComparisonResponseDTO compareScenarios(@RequestBody ScenarioComparisonRequestDTO request) {
+        return shipmentService.compareScenarios(request);
     }
 
     @GetMapping("/{id}")

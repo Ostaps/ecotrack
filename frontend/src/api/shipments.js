@@ -10,6 +10,11 @@ export const createShipment = async (shipment) => {
   return data;
 };
 
+export const compareShipmentScenarios = async (payload) => {
+  const { data } = await client.post('/shipments/scenario-comparisons', payload);
+  return data;
+};
+
 export const getShipmentDetail = async (id) => {
   const { data } = await client.get(`/shipments/${id}`);
   return data;

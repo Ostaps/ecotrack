@@ -1,5 +1,9 @@
 package com.ecotrack.service;
 
+import com.ecotrack.dto.ScenarioComparisonRequestDTO;
+import com.ecotrack.dto.ScenarioComparisonResponseDTO;
+import com.ecotrack.dto.ScenarioComparisonResultDTO;
+import com.ecotrack.dto.ScenarioComparisonScenarioDTO;
 import com.ecotrack.dto.ShipmentDTO;
 import com.ecotrack.dto.ShipmentDetailDTO;
 import com.ecotrack.model.EmissionLog;
@@ -17,7 +21,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -25,6 +33,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ShipmentService {
+
+    private static final String METHODOLOGY_REFERENCE = "GLEC Framework v3";
 
     private final ShipmentRepository shipmentRepository;
     private final VehicleRepository vehicleRepository;
@@ -97,6 +107,30 @@ public class ShipmentService {
     public List<ShipmentDTO> getLive() {
         return shipmentRepository.findByStatusNot(ShipmentStatus.DELIVERED)
                 .stream().map(this::toDTO).collect(Collectors.toList());
+    }
+
+    public ScenarioComparisonResponseDTO compareScenarios(ScenarioComparisonRequestDTO request) {
+        validateComparisonRequest(request);
+
+        List<ScenarioComparisonResultDTO> rankedScenarios = request.getScenarios().stream()
+                .map(this::buildScenarioResult)
+                .sorted(Comparator
+                        .comparing(ScenarioComparisonResultDTO::getEstimatedCo2Kg)
+                        .thenComparing(ScenarioComparisonResultDTO::getDistanceKm)
+                        .thenComparing(result -> result.getScenarioLabel().toLowerCase(Locale.ROOT)))
+                .collect(Collectors.toList());
+
+        for (int index = 0; index < rankedScenarios.size(); index++) {
+            rankedScenarios.get(index).setRank(index + 1);
+            rankedScenarios.get(index).setPreferred(index == 0);
+        }
+
+        return ScenarioComparisonResponseDTO.builder()
+                .preferredScenarioLabel(rankedScenarios.get(0).getScenarioLabel())
+                .methodologyReference(METHODOLOGY_REFERENCE)
+                .comparisonTimestamp(LocalDateTime.now())
+                .scenarios(rankedScenarios)
+                .build();
     }
 
     // ── Mapping helpers ──────────────────────────────────────────────────────
@@ -172,8 +206,112 @@ public class ShipmentService {
                 .fuelMultiplierApplied(String.valueOf(fuelMult))
                 .longHaulPenaltyApplied(longHaul)
                 .euro5TaxApplied(euro5)
-                .calculationFormula("E = D × W × EF (GLEC Framework v3)")
+                .calculationFormula("E = D × W × EF (" + METHODOLOGY_REFERENCE + ")")
                 .build();
+    }
+
+    private ScenarioComparisonResultDTO buildScenarioResult(ScenarioComparisonScenarioDTO scenario) {
+        Vehicle vehicle = vehicleRepository.findById(scenario.getVehicleId())
+                .orElseThrow(() -> new EntityNotFoundException("Vehicle not found: " + scenario.getVehicleId()));
+
+        Shipment shipmentProjection = Shipment.builder()
+                .origin(scenario.getOrigin())
+                .destination(scenario.getDestination())
+                .originLat(scenario.getOriginLat())
+                .originLon(scenario.getOriginLon())
+                .destinationLat(scenario.getDestinationLat())
+                .destinationLon(scenario.getDestinationLon())
+                .distanceKm(scenario.getDistanceKm())
+                .payloadTons(scenario.getPayloadTons())
+                .transportMode(scenario.getTransportMode())
+                .build();
+
+        Double estimatedCo2 = sustainabilityService.calculateEmissions(shipmentProjection, vehicle);
+
+        return ScenarioComparisonResultDTO.builder()
+                .scenarioLabel(scenario.getScenarioLabel().trim())
+                .estimatedCo2Kg(estimatedCo2)
+                .preferred(false)
+                .origin(scenario.getOrigin().trim())
+                .destination(scenario.getDestination().trim())
+                .distanceKm(scenario.getDistanceKm())
+                .payloadTons(scenario.getPayloadTons())
+                .transportMode(scenario.getTransportMode())
+                .vehicleId(vehicle.getId())
+                .vehicleModel(vehicle.getModel())
+                .vehicleFuelType(vehicle.getFuelType().name())
+                .explanation(buildScenarioExplanation())
+                .build();
+    }
+
+    private String buildScenarioExplanation() {
+        return String.format(
+                Locale.ROOT,
+                "Estimated using %s. Lower CO2 ranks first; ties go to shorter distance.",
+                METHODOLOGY_REFERENCE
+        );
+    }
+
+    private void validateComparisonRequest(ScenarioComparisonRequestDTO request) {
+        if (request == null || request.getScenarios() == null) {
+            throw new IllegalArgumentException("Comparison request must include scenarios.");
+        }
+
+        if (request.getScenarios().size() < 2 || request.getScenarios().size() > 4) {
+            throw new IllegalArgumentException("Comparison requires between 2 and 4 scenarios.");
+        }
+
+        Set<String> labels = new HashSet<>();
+        for (int index = 0; index < request.getScenarios().size(); index++) {
+            ScenarioComparisonScenarioDTO scenario = request.getScenarios().get(index);
+            String prefix = "Scenario " + (index + 1) + ": ";
+
+            if (scenario == null) {
+                throw new IllegalArgumentException(prefix + "data is required.");
+            }
+
+            validateRequiredText(scenario.getScenarioLabel(), prefix + "scenarioLabel is required.");
+            validateRequiredText(scenario.getOrigin(), prefix + "origin is required.");
+            validateRequiredText(scenario.getDestination(), prefix + "destination is required.");
+
+            String normalizedLabel = scenario.getScenarioLabel().trim().toLowerCase(Locale.ROOT);
+            if (!labels.add(normalizedLabel)) {
+                throw new IllegalArgumentException("Scenario labels must be unique.");
+            }
+
+            validateRequiredNumber(scenario.getOriginLat(), prefix + "originLat is required.");
+            validateRequiredNumber(scenario.getOriginLon(), prefix + "originLon is required.");
+            validateRequiredNumber(scenario.getDestinationLat(), prefix + "destinationLat is required.");
+            validateRequiredNumber(scenario.getDestinationLon(), prefix + "destinationLon is required.");
+
+            if (scenario.getDistanceKm() == null || scenario.getDistanceKm() <= 0) {
+                throw new IllegalArgumentException(prefix + "distanceKm must be greater than 0.");
+            }
+
+            if (scenario.getPayloadTons() == null || scenario.getPayloadTons() <= 0) {
+                throw new IllegalArgumentException(prefix + "payloadTons must be greater than 0.");
+            }
+
+            if (scenario.getTransportMode() == null) {
+                throw new IllegalArgumentException(prefix + "transportMode is required.");
+            }
+
+            if (scenario.getVehicleId() == null) {
+                throw new IllegalArgumentException(prefix + "vehicleId is required.");
+            }
+        }
+    }
+
+    private void validateRequiredText(String value, String message) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+
+    private void validateRequiredNumber(Double value, String message) {
+        if (value == null) {
+            throw new IllegalArgumentException(message);
+        }
     }
 
     private String generateTrackingId() {
