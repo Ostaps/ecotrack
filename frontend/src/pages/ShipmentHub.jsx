@@ -10,6 +10,7 @@ export default function ShipmentHub() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [vehicles, setVehicles] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('ALL');
 
   // Modal & Drawer State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -41,8 +42,11 @@ export default function ShipmentHub() {
   };
 
   useEffect(() => {
-    fetchData();
-    getVehicles(0, 100).then(res => setVehicles(res.content || res));
+    getShipments().then((res) => {
+      setData(res.content || res);
+      setLoading(false);
+    });
+    getVehicles(0, 100).then((res) => setVehicles(res.content || res));
   }, []);
 
   const handleCreateShipment = async (e) => {
@@ -60,8 +64,9 @@ export default function ShipmentHub() {
       });
       toast.success('Shipment created successfully!');
       setIsAddModalOpen(false);
+      setStatusFilter('ALL');
       fetchData();
-    } catch (err) {
+    } catch {
       toast.error('Failed to create shipment');
     }
   };
@@ -73,7 +78,7 @@ export default function ShipmentHub() {
     try {
       const detail = await getShipmentDetail(row.id);
       setShipmentDetail(detail);
-    } catch (err) {
+    } catch {
       toast.error('Failed to load details');
     } finally {
       setDetailLoading(false);
@@ -104,6 +109,10 @@ export default function ShipmentHub() {
     return <span className={`font-medium text-sm ${styles[mode]}`}>{mode}</span>;
   };
 
+  const filteredShipments = statusFilter === 'ALL'
+    ? data
+    : data.filter((row) => row.status === statusFilter);
+
   return (
     <div className="p-8 max-w-7xl mx-auto h-full overflow-y-auto">
       <div className="flex justify-between items-end mb-8">
@@ -123,17 +132,27 @@ export default function ShipmentHub() {
         <div className="p-4 border-b border-gray-200">
           <div className="relative inline-block">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <select className="pl-10 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none appearance-none bg-white font-medium text-gray-700">
-              <option>All Statuses</option>
-              <option>In Transit</option>
-              <option>Pending</option>
-              <option>Delivered</option>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="pl-10 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none appearance-none bg-white font-medium text-gray-700"
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="IN_TRANSIT">In Transit</option>
+              <option value="PENDING">Pending</option>
+              <option value="DELIVERED">Delivered</option>
+              <option value="DELAYED">Delayed</option>
             </select>
           </div>
         </div>
 
         {loading ? (
           <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-green-500" /></div>
+        ) : filteredShipments.length === 0 ? (
+          <div className="p-12 text-center">
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">No shipments match this status</h2>
+            <p className="text-sm text-gray-500">Try another filter or switch back to All Statuses.</p>
+          </div>
         ) : (
           <div className="overflow-x-auto max-h-[600px] custom-scrollbar">
             <table className="w-full text-left border-collapse relative">
@@ -150,7 +169,7 @@ export default function ShipmentHub() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.map(row => (
+                {filteredShipments.map(row => (
                   <tr key={row.id} onClick={() => handleRowClick(row)} className="hover:bg-white hover:shadow-md hover:scale-[1.002] transition-all duration-200 cursor-pointer bg-white group">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-transparent">{row.trackingId}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 bg-transparent">{row.origin} &rarr; {row.destination}</td>
