@@ -7,3 +7,6 @@
 backend/target/
 frontend/node_modules/
 frontend/dist/
+
+# Локальні скрипти — не комітити й не показувати в PR
+scripts/
