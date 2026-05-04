@@ -6,10 +6,19 @@ import toast from 'react-hot-toast';
 import Modal from '../components/Modal';
 import Drawer from '../components/Drawer';
 
+const STATUS_FILTERS = [
+  { value: 'ALL', label: 'All Statuses' },
+  { value: 'IN_TRANSIT', label: 'In Transit' },
+  { value: 'PENDING', label: 'Pending' },
+  { value: 'DELIVERED', label: 'Delivered' },
+  { value: 'DELAYED', label: 'Delayed' }
+];
+
 export default function ShipmentHub() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [vehicles, setVehicles] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('ALL');
 
   // Modal & Drawer State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -41,9 +50,31 @@ export default function ShipmentHub() {
   };
 
   useEffect(() => {
-    fetchData();
-    getVehicles(0, 100).then(res => setVehicles(res.content || res));
+    let isMounted = true;
+
+    getShipments().then(res => {
+      if (!isMounted) {
+        return;
+      }
+
+      setData(res.content || res);
+      setLoading(false);
+    });
+
+    getVehicles(0, 100).then(res => {
+      if (isMounted) {
+        setVehicles(res.content || res);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  const filteredData = statusFilter === 'ALL'
+    ? data
+    : data.filter(row => row.status === statusFilter);
 
   const handleCreateShipment = async (e) => {
     e.preventDefault();
@@ -60,8 +91,9 @@ export default function ShipmentHub() {
       });
       toast.success('Shipment created successfully!');
       setIsAddModalOpen(false);
+      setStatusFilter('ALL');
       fetchData();
-    } catch (err) {
+    } catch {
       toast.error('Failed to create shipment');
     }
   };
@@ -73,7 +105,7 @@ export default function ShipmentHub() {
     try {
       const detail = await getShipmentDetail(row.id);
       setShipmentDetail(detail);
-    } catch (err) {
+    } catch {
       toast.error('Failed to load details');
     } finally {
       setDetailLoading(false);
@@ -123,17 +155,25 @@ export default function ShipmentHub() {
         <div className="p-4 border-b border-gray-200">
           <div className="relative inline-block">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <select className="pl-10 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none appearance-none bg-white font-medium text-gray-700">
-              <option>All Statuses</option>
-              <option>In Transit</option>
-              <option>Pending</option>
-              <option>Delivered</option>
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="pl-10 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none appearance-none bg-white font-medium text-gray-700"
+            >
+              {STATUS_FILTERS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
           </div>
         </div>
 
         {loading ? (
           <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-green-500" /></div>
+        ) : filteredData.length === 0 ? (
+          <div className="p-12 text-center">
+            <div className="text-lg font-semibold text-gray-900">No shipments match this status</div>
+            <p className="mt-2 text-sm text-gray-500">Choose a different filter or create a new shipment.</p>
+          </div>
         ) : (
           <div className="overflow-x-auto max-h-[600px] custom-scrollbar">
             <table className="w-full text-left border-collapse relative">
@@ -150,7 +190,7 @@ export default function ShipmentHub() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.map(row => (
+                {filteredData.map(row => (
                   <tr key={row.id} onClick={() => handleRowClick(row)} className="hover:bg-white hover:shadow-md hover:scale-[1.002] transition-all duration-200 cursor-pointer bg-white group">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-transparent">{row.trackingId}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 bg-transparent">{row.origin} &rarr; {row.destination}</td>
