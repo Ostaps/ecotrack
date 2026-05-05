@@ -2,7 +2,7 @@ import { FileText, Download } from 'lucide-react';
 
 export default function Compliance() {
   const handlePrint = () => {
-    window.open('http://localhost:8080/api/v1/analytics/reports/esg', '_blank');
+    window.open('http://localhost:8090/api/v1/analytics/reports/esg', '_blank');
   };
 
   const handleDownload = (format) => {
