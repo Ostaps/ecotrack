@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getShipments, createShipment, getShipmentDetail } from '../api/shipments';
 import { getVehicles } from '../api/vehicles';
-import { Loader2, Plus, Filter, ChevronRight, Calculator, Truck, Info } from 'lucide-react';
+import { Loader2, Plus, Filter, ChevronRight, Calculator, Truck, Info, GitCompare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../components/Modal';
 import Drawer from '../components/Drawer';
+import ScenarioComparisonModal from '../components/ScenarioComparisonModal';
 
 export default function ShipmentHub() {
   const [data, setData] = useState([]);
@@ -12,6 +13,7 @@ export default function ShipmentHub() {
   const [vehicles, setVehicles] = useState([]);
 
   // Modal & Drawer State
+  const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedShipment, setSelectedShipment] = useState(null);
@@ -32,18 +34,18 @@ export default function ShipmentHub() {
     vehicleId: ''
   });
 
-  const fetchData = () => {
+  const fetchShipments = useCallback(() => {
     setLoading(true);
     getShipments().then(res => {
       setData(res.content || res);
       setLoading(false);
     });
-  };
+  }, []);
 
   useEffect(() => {
-    fetchData();
+    fetchShipments();
     getVehicles(0, 100).then(res => setVehicles(res.content || res));
-  }, []);
+  }, [fetchShipments]);
 
   const handleCreateShipment = async (e) => {
     e.preventDefault();
@@ -60,8 +62,8 @@ export default function ShipmentHub() {
       });
       toast.success('Shipment created successfully!');
       setIsAddModalOpen(false);
-      fetchData();
-    } catch (err) {
+      fetchShipments();
+    } catch {
       toast.error('Failed to create shipment');
     }
   };
@@ -73,7 +75,7 @@ export default function ShipmentHub() {
     try {
       const detail = await getShipmentDetail(row.id);
       setShipmentDetail(detail);
-    } catch (err) {
+    } catch {
       toast.error('Failed to load details');
     } finally {
       setDetailLoading(false);
@@ -111,12 +113,20 @@ export default function ShipmentHub() {
           <h1 className="text-2xl font-bold text-gray-900 mb-1">Shipment Hub</h1>
           <p className="text-gray-500">Track and manage active routes and calculated emissions.</p>
         </div>
-        <button 
-          onClick={() => setIsAddModalOpen(true)}
-          className="bg-[#22c55e] hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors"
-        >
-          <Plus size={18} /> Create Shipment
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsCompareOpen(true)}
+            className="border border-green-500 text-green-600 hover:bg-green-50 px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors"
+          >
+            <GitCompare size={18} /> Compare Routes
+          </button>
+          <button 
+            onClick={() => setIsAddModalOpen(true)}
+            className="bg-[#22c55e] hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors"
+          >
+            <Plus size={18} /> Create Shipment
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -237,6 +247,9 @@ export default function ShipmentHub() {
           </div>
         </form>
       </Modal>
+
+      {/* Scenario Comparison Modal */}
+      <ScenarioComparisonModal isOpen={isCompareOpen} onClose={() => setIsCompareOpen(false)} vehicles={vehicles} />
 
       {/* Shipment Details Drawer */}
       <Drawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} title="Shipment Overview">
