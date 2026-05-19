@@ -10,6 +10,7 @@ export default function ShipmentHub() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [vehicles, setVehicles] = useState([]);
+  const [selectedStatus, setSelectedStatus] = useState('ALL');
 
   // Modal & Drawer State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -59,6 +60,7 @@ export default function ShipmentHub() {
         vehicleId: formData.vehicleId ? parseInt(formData.vehicleId) : null
       });
       toast.success('Shipment created successfully!');
+      setSelectedStatus('ALL');
       setIsAddModalOpen(false);
       fetchData();
     } catch (err) {
@@ -104,6 +106,10 @@ export default function ShipmentHub() {
     return <span className={`font-medium text-sm ${styles[mode]}`}>{mode}</span>;
   };
 
+  const filteredData = selectedStatus === 'ALL'
+    ? data
+    : data.filter((row) => row.status === selectedStatus);
+
   return (
     <div className="p-8 max-w-7xl mx-auto h-full overflow-y-auto">
       <div className="flex justify-between items-end mb-8">
@@ -123,11 +129,16 @@ export default function ShipmentHub() {
         <div className="p-4 border-b border-gray-200">
           <div className="relative inline-block">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <select className="pl-10 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none appearance-none bg-white font-medium text-gray-700">
-              <option>All Statuses</option>
-              <option>In Transit</option>
-              <option>Pending</option>
-              <option>Delivered</option>
+            <select
+              className="pl-10 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none appearance-none bg-white font-medium text-gray-700"
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="IN_TRANSIT">In Transit</option>
+              <option value="PENDING">Pending</option>
+              <option value="DELIVERED">Delivered</option>
+              <option value="DELAYED">Delayed</option>
             </select>
           </div>
         </div>
@@ -150,7 +161,7 @@ export default function ShipmentHub() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.map(row => (
+                {filteredData.map(row => (
                   <tr key={row.id} onClick={() => handleRowClick(row)} className="hover:bg-white hover:shadow-md hover:scale-[1.002] transition-all duration-200 cursor-pointer bg-white group">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-transparent">{row.trackingId}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 bg-transparent">{row.origin} &rarr; {row.destination}</td>
@@ -166,6 +177,12 @@ export default function ShipmentHub() {
                 ))}
               </tbody>
             </table>
+
+            {!filteredData.length && (
+              <div className="px-6 py-10 text-center text-sm text-gray-500 bg-white border-t border-gray-100">
+                No shipments found for the selected status.
+              </div>
+            )}
           </div>
         )}
       </div>
