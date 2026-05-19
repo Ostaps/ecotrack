@@ -1,3 +1,9 @@
+# --- iterix: secrets (local only; never commit) ---
+/.env
+/.env.*
+/.env.local
+# --- end iterix: secrets ---
+
 /.softi/
 /.cursor/
 /.claude/
