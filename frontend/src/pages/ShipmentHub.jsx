@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { getShipments, createShipment, getShipmentDetail } from '../api/shipments';
+import { getShipments, createShipment, getShipmentDetail, compareShipmentScenarios } from '../api/shipments';
 import { getVehicles } from '../api/vehicles';
-import { Loader2, Plus, Filter, ChevronRight, Calculator, Truck, Info } from 'lucide-react';
+import { Loader2, Plus, Filter, ChevronRight, Calculator, Truck, Info, GitCompareArrows } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../components/Modal';
 import Drawer from '../components/Drawer';
@@ -10,6 +10,10 @@ export default function ShipmentHub() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [vehicles, setVehicles] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [comparisonError, setComparisonError] = useState('');
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonResult, setComparisonResult] = useState(null);
 
   // Modal & Drawer State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -32,6 +36,11 @@ export default function ShipmentHub() {
     vehicleId: ''
   });
 
+  const [scenarioForm, setScenarioForm] = useState([
+    { scenarioId: 'scenario-1', origin: '', destination: '', distanceKm: '', payloadTons: '', transportMode: 'ROAD', vehicleId: '' },
+    { scenarioId: 'scenario-2', origin: '', destination: '', distanceKm: '', payloadTons: '', transportMode: 'ROAD', vehicleId: '' }
+  ]);
+
   const fetchData = () => {
     setLoading(true);
     getShipments().then(res => {
@@ -40,10 +49,12 @@ export default function ShipmentHub() {
     });
   };
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     fetchData();
     getVehicles(0, 100).then(res => setVehicles(res.content || res));
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleCreateShipment = async (e) => {
     e.preventDefault();
@@ -56,13 +67,55 @@ export default function ShipmentHub() {
         destinationLon: parseFloat(formData.destinationLon),
         distanceKm: parseFloat(formData.distanceKm),
         payloadTons: parseFloat(formData.payloadTons),
-        vehicleId: formData.vehicleId ? parseInt(formData.vehicleId) : null
+        vehicleId: formData.vehicleId || null
       });
       toast.success('Shipment created successfully!');
       setIsAddModalOpen(false);
+      setStatusFilter('ALL');
       fetchData();
-    } catch (err) {
+    } catch {
       toast.error('Failed to create shipment');
+    }
+  };
+
+  const filteredData = statusFilter === 'ALL' ? data : data.filter(row => row.status === statusFilter);
+
+  const updateScenario = (index, field, value) => {
+    setScenarioForm(prev => prev.map((scenario, i) => i === index ? { ...scenario, [field]: value } : scenario));
+  };
+
+  const compareScenarios = async () => {
+    setComparisonError('');
+    setComparisonResult(null);
+
+    const hasMissing = scenarioForm.some(
+      s => !s.origin || !s.destination || !s.distanceKm || !s.payloadTons || !s.vehicleId || !s.transportMode
+    );
+    if (hasMissing) {
+      setComparisonError('Complete all scenario fields before comparing.');
+      return;
+    }
+
+    const payload = {
+      scenarios: scenarioForm.map((s, index) => ({
+        scenarioId: s.scenarioId || `scenario-${index + 1}`,
+        origin: s.origin,
+        destination: s.destination,
+        distanceKm: Number(s.distanceKm),
+        payloadTons: Number(s.payloadTons),
+        transportMode: s.transportMode,
+        vehicleId: s.vehicleId
+      }))
+    };
+
+    setComparisonLoading(true);
+    try {
+      const result = await compareShipmentScenarios(payload);
+      setComparisonResult(result);
+    } catch (error) {
+      setComparisonError(error?.response?.data?.message || 'Failed to compare scenarios.');
+    } finally {
+      setComparisonLoading(false);
     }
   };
 
@@ -73,7 +126,7 @@ export default function ShipmentHub() {
     try {
       const detail = await getShipmentDetail(row.id);
       setShipmentDetail(detail);
-    } catch (err) {
+    } catch {
       toast.error('Failed to load details');
     } finally {
       setDetailLoading(false);
@@ -123,11 +176,16 @@ export default function ShipmentHub() {
         <div className="p-4 border-b border-gray-200">
           <div className="relative inline-block">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <select className="pl-10 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none appearance-none bg-white font-medium text-gray-700">
-              <option>All Statuses</option>
-              <option>In Transit</option>
-              <option>Pending</option>
-              <option>Delivered</option>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="pl-10 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none appearance-none bg-white font-medium text-gray-700"
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="IN_TRANSIT">In Transit</option>
+              <option value="PENDING">Pending</option>
+              <option value="DELIVERED">Delivered</option>
+              <option value="DELAYED">Delayed</option>
             </select>
           </div>
         </div>
@@ -150,7 +208,7 @@ export default function ShipmentHub() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.map(row => (
+                {filteredData.map(row => (
                   <tr key={row.id} onClick={() => handleRowClick(row)} className="hover:bg-white hover:shadow-md hover:scale-[1.002] transition-all duration-200 cursor-pointer bg-white group">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-transparent">{row.trackingId}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 bg-transparent">{row.origin} &rarr; {row.destination}</td>
@@ -166,6 +224,121 @@ export default function ShipmentHub() {
                 ))}
               </tbody>
             </table>
+            {!filteredData.length && (
+              <div className="p-8 text-center text-sm text-gray-500 border-t border-gray-100">
+                No shipments match the selected status.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-8 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <GitCompareArrows size={18} className="text-green-600" />
+              Green Route Advisor v1
+            </h2>
+            <p className="text-sm text-gray-500">Estimated values only. Final emissions are recorded after shipment creation.</p>
+          </div>
+          <button
+            type="button"
+            onClick={compareScenarios}
+            className="bg-[#22c55e] hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+          >
+            Compare Scenarios
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {scenarioForm.map((scenario, index) => (
+            <div key={scenario.scenarioId} className="border border-gray-200 rounded-lg p-4">
+              <h3 className="font-medium text-gray-800 mb-3">Scenario {index + 1}</h3>
+              <div className="space-y-2">
+                <input
+                  className="w-full border border-gray-300 rounded-md p-2 text-sm"
+                  placeholder="Origin"
+                  value={scenario.origin}
+                  onChange={e => updateScenario(index, 'origin', e.target.value)}
+                />
+                <input
+                  className="w-full border border-gray-300 rounded-md p-2 text-sm"
+                  placeholder="Destination"
+                  value={scenario.destination}
+                  onChange={e => updateScenario(index, 'destination', e.target.value)}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    step="0.1"
+                    className="w-full border border-gray-300 rounded-md p-2 text-sm"
+                    placeholder="Distance km"
+                    value={scenario.distanceKm}
+                    onChange={e => updateScenario(index, 'distanceKm', e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    step="0.1"
+                    className="w-full border border-gray-300 rounded-md p-2 text-sm"
+                    placeholder="Payload tons"
+                    value={scenario.payloadTons}
+                    onChange={e => updateScenario(index, 'payloadTons', e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    className="w-full border border-gray-300 rounded-md p-2 text-sm bg-white"
+                    value={scenario.transportMode}
+                    onChange={e => updateScenario(index, 'transportMode', e.target.value)}
+                  >
+                    <option value="ROAD">Road</option>
+                    <option value="RAIL">Rail</option>
+                    <option value="SEA">Sea</option>
+                    <option value="AIR">Air</option>
+                  </select>
+                  <select
+                    className="w-full border border-gray-300 rounded-md p-2 text-sm bg-white"
+                    value={scenario.vehicleId}
+                    onChange={e => updateScenario(index, 'vehicleId', e.target.value)}
+                  >
+                    <option value="">Select vehicle</option>
+                    {vehicles.map(v => (
+                      <option key={v.id} value={v.id}>{v.model} ({v.fuelType})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {comparisonError && (
+          <div className="mt-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-md p-3">{comparisonError}</div>
+        )}
+        {comparisonLoading && (
+          <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">
+            <Loader2 className="w-4 h-4 animate-spin" /> Comparing scenarios...
+          </div>
+        )}
+        {comparisonResult && (
+          <div className="mt-4">
+            <div className="text-sm text-gray-700 mb-2">
+              Preferred rule: <span className="font-medium">{comparisonResult.preferredRule}</span>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {comparisonResult.scenarios.map((scenario) => (
+                <div key={scenario.scenarioId} className={`rounded-lg border p-3 ${scenario.scenarioId === comparisonResult.preferredScenarioId ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                  <div className="flex justify-between items-center mb-1">
+                    <div className="font-medium text-gray-900">{scenario.scenarioId}</div>
+                    {scenario.scenarioId === comparisonResult.preferredScenarioId && <span className="text-xs font-semibold text-green-700">Preferred</span>}
+                  </div>
+                  <div className="text-sm text-gray-600">{scenario.origin} → {scenario.destination}</div>
+                  <div className="text-sm text-gray-700 mt-1">CO2 (Estimated): <span className="font-semibold text-green-700">{scenario.estimatedCo2Kg} kg</span></div>
+                  <div className="text-xs text-gray-500 mt-1">Method: {scenario.methodologyVersion}</div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

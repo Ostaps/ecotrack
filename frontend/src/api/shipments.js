@@ -19,3 +19,8 @@ export const getLiveShipments = async () => {
   const { data } = await client.get('/shipments/live');
   return data;
 };
+
+export const compareShipmentScenarios = async (payload) => {
+  const { data } = await client.post('/shipments/compare-scenarios', payload);
+  return data;
+};
