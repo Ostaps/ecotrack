@@ -2,11 +2,15 @@ package com.ecotrack.service;
 
 import com.ecotrack.dto.ShipmentDTO;
 import com.ecotrack.dto.ShipmentDetailDTO;
+import com.ecotrack.dto.ScenarioComparisonResponseDTO;
+import com.ecotrack.dto.ScenarioInputDTO;
+import com.ecotrack.dto.ScenarioResultDTO;
 import com.ecotrack.model.EmissionLog;
 import com.ecotrack.model.Shipment;
 import com.ecotrack.model.Vehicle;
 import com.ecotrack.model.enums.FuelType;
 import com.ecotrack.model.enums.ShipmentStatus;
+import com.ecotrack.model.enums.TransportMode;
 import com.ecotrack.repository.EmissionLogRepository;
 import com.ecotrack.repository.ShipmentRepository;
 import com.ecotrack.repository.VehicleRepository;
@@ -19,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.Comparator;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -97,6 +103,75 @@ public class ShipmentService {
     public List<ShipmentDTO> getLive() {
         return shipmentRepository.findByStatusNot(ShipmentStatus.DELIVERED)
                 .stream().map(this::toDTO).collect(Collectors.toList());
+    }
+
+    public ScenarioComparisonResponseDTO compareScenarios(List<ScenarioInputDTO> scenarios) {
+        if (scenarios == null || scenarios.size() < 2) {
+            throw new IllegalArgumentException("At least 2 scenarios are required for comparison");
+        }
+
+        List<ScenarioResultDTO> results = scenarios.stream()
+                .map(this::buildScenarioResult)
+                .collect(Collectors.toList());
+
+        ScenarioResultDTO preferred = results.stream()
+                .min(Comparator.comparing(ScenarioResultDTO::getEstimatedCo2))
+                .orElseThrow(() -> new IllegalArgumentException("No scenarios to compare"));
+
+        results.forEach(result -> result.setPreferred(Objects.equals(result.getScenario(), preferred.getScenario())));
+
+        return ScenarioComparisonResponseDTO.builder()
+                .preferredScenario(preferred.getScenario())
+                .rankingRule("MIN_ESTIMATED_CO2E")
+                .methodologyVersion("GLEC Framework v3")
+                .scenarios(results)
+                .build();
+    }
+
+    private ScenarioResultDTO buildScenarioResult(ScenarioInputDTO input) {
+        if (input.getDistanceKm() == null || input.getDistanceKm() <= 0) {
+            throw new IllegalArgumentException("distanceKm must be greater than 0");
+        }
+        if (input.getPayloadTons() == null || input.getPayloadTons() <= 0) {
+            throw new IllegalArgumentException("payloadTons must be greater than 0");
+        }
+        if (input.getVehicleId() == null) {
+            throw new IllegalArgumentException("vehicleId is required");
+        }
+
+        TransportMode mode;
+        try {
+            mode = TransportMode.valueOf(input.getTransportMode().toUpperCase());
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Unsupported transportMode: " + input.getTransportMode());
+        }
+
+        Vehicle vehicle = vehicleRepository.findById(input.getVehicleId())
+                .orElseThrow(() -> new EntityNotFoundException("Vehicle not found: " + input.getVehicleId()));
+
+        Shipment shipment = Shipment.builder()
+                .origin(input.getOrigin())
+                .destination(input.getDestination())
+                .distanceKm(input.getDistanceKm())
+                .payloadTons(input.getPayloadTons())
+                .transportMode(mode)
+                .vehicle(vehicle)
+                .build();
+
+        double estimate = sustainabilityService.calculateEmissions(shipment, vehicle);
+
+        return ScenarioResultDTO.builder()
+                .scenario(input.getName())
+                .origin(input.getOrigin())
+                .destination(input.getDestination())
+                .transportMode(mode.name())
+                .distanceKm(input.getDistanceKm())
+                .payloadTons(input.getPayloadTons())
+                .vehicleModel(vehicle.getModel())
+                .estimatedCo2(estimate)
+                .estimateLabel("Estimated")
+                .preferred(false)
+                .build();
     }
 
     // ── Mapping helpers ──────────────────────────────────────────────────────
