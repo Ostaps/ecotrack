@@ -10,6 +10,7 @@ export default function ShipmentHub() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [vehicles, setVehicles] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('');
 
   // Modal & Drawer State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -60,6 +61,7 @@ export default function ShipmentHub() {
       });
       toast.success('Shipment created successfully!');
       setIsAddModalOpen(false);
+      setStatusFilter('');
       fetchData();
     } catch (err) {
       toast.error('Failed to create shipment');
@@ -94,6 +96,10 @@ export default function ShipmentHub() {
     );
   };
 
+  const filteredData = statusFilter
+    ? data.filter((row) => row.status === statusFilter)
+    : data;
+
   const getModeBadge = (mode) => {
     const styles = {
       ROAD: 'text-orange-600',
@@ -123,11 +129,15 @@ export default function ShipmentHub() {
         <div className="p-4 border-b border-gray-200">
           <div className="relative inline-block">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <select className="pl-10 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none appearance-none bg-white font-medium text-gray-700">
-              <option>All Statuses</option>
-              <option>In Transit</option>
-              <option>Pending</option>
-              <option>Delivered</option>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="pl-10 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none appearance-none bg-white font-medium text-gray-700"
+            >
+              <option value="">All Statuses</option>
+              <option value="IN_TRANSIT">In Transit</option>
+              <option value="PENDING">Pending</option>
+              <option value="DELIVERED">Delivered</option>
             </select>
           </div>
         </div>
@@ -150,20 +160,28 @@ export default function ShipmentHub() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.map(row => (
-                  <tr key={row.id} onClick={() => handleRowClick(row)} className="hover:bg-white hover:shadow-md hover:scale-[1.002] transition-all duration-200 cursor-pointer bg-white group">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-transparent">{row.trackingId}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 bg-transparent">{row.origin} &rarr; {row.destination}</td>
-                    <td className="px-6 py-4 whitespace-nowrap bg-transparent">{getStatusBadge(row.status)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap bg-transparent">{getModeBadge(row.transportMode)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 bg-transparent">{row.distanceKm} km</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 bg-transparent">{row.payloadTons} t</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600 text-right bg-transparent">{row.calculatedCo2} kg</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right bg-transparent">
-                      <ChevronRight size={18} className="text-gray-400 group-hover:text-green-500 transition-colors inline-block" />
+                {filteredData.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-12 text-center text-sm text-gray-500">
+                      No shipments match the selected filter.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredData.map(row => (
+                    <tr key={row.id} onClick={() => handleRowClick(row)} className="hover:bg-white hover:shadow-md hover:scale-[1.002] transition-all duration-200 cursor-pointer bg-white group">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-transparent">{row.trackingId}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 bg-transparent">{row.origin} &rarr; {row.destination}</td>
+                      <td className="px-6 py-4 whitespace-nowrap bg-transparent">{getStatusBadge(row.status)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap bg-transparent">{getModeBadge(row.transportMode)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 bg-transparent">{row.distanceKm} km</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 bg-transparent">{row.payloadTons} t</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600 text-right bg-transparent">{row.calculatedCo2} kg</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right bg-transparent">
+                        <ChevronRight size={18} className="text-gray-400 group-hover:text-green-500 transition-colors inline-block" />
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
