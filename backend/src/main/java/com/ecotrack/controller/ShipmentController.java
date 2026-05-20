@@ -2,6 +2,8 @@ package com.ecotrack.controller;
 
 import com.ecotrack.dto.ShipmentDTO;
 import com.ecotrack.dto.ShipmentDetailDTO;
+import com.ecotrack.dto.ScenarioComparisonRequestDTO;
+import com.ecotrack.dto.ScenarioComparisonResponseDTO;
 import com.ecotrack.model.enums.ShipmentStatus;
 import com.ecotrack.service.ShipmentService;
 import lombok.RequiredArgsConstructor;
@@ -52,5 +54,10 @@ public class ShipmentController {
     @GetMapping("/live")
     public List<ShipmentDTO> getLive() {
         return shipmentService.getLive();
+    }
+
+    @PostMapping("/compare")
+    public ScenarioComparisonResponseDTO compare(@RequestBody ScenarioComparisonRequestDTO request) {
+        return shipmentService.compareScenarios(request.getScenarios());
     }
 }

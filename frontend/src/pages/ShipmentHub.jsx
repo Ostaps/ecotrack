@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { getShipments, createShipment, getShipmentDetail } from '../api/shipments';
+import { getShipments, createShipment, getShipmentDetail, compareShipmentScenarios } from '../api/shipments';
 import { getVehicles } from '../api/vehicles';
-import { Loader2, Plus, Filter, ChevronRight, Calculator, Truck, Info } from 'lucide-react';
+import { Loader2, Plus, Filter, ChevronRight, Calculator, Truck, Info, GitCompare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../components/Modal';
 import Drawer from '../components/Drawer';
@@ -10,6 +10,9 @@ export default function ShipmentHub() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [vehicles, setVehicles] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareResult, setCompareResult] = useState(null);
 
   // Modal & Drawer State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -31,6 +34,26 @@ export default function ShipmentHub() {
     transportMode: 'ROAD',
     vehicleId: ''
   });
+  const [scenarioForm, setScenarioForm] = useState([
+    {
+      name: 'Scenario A',
+      origin: '',
+      destination: '',
+      distanceKm: '',
+      payloadTons: '',
+      transportMode: 'ROAD',
+      vehicleId: ''
+    },
+    {
+      name: 'Scenario B',
+      origin: '',
+      destination: '',
+      distanceKm: '',
+      payloadTons: '',
+      transportMode: 'ROAD',
+      vehicleId: ''
+    }
+  ]);
 
   const fetchData = () => {
     setLoading(true);
@@ -41,6 +64,7 @@ export default function ShipmentHub() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
     getVehicles(0, 100).then(res => setVehicles(res.content || res));
   }, []);
@@ -60,8 +84,9 @@ export default function ShipmentHub() {
       });
       toast.success('Shipment created successfully!');
       setIsAddModalOpen(false);
+      setStatusFilter('ALL');
       fetchData();
-    } catch (err) {
+    } catch {
       toast.error('Failed to create shipment');
     }
   };
@@ -73,7 +98,7 @@ export default function ShipmentHub() {
     try {
       const detail = await getShipmentDetail(row.id);
       setShipmentDetail(detail);
-    } catch (err) {
+    } catch {
       toast.error('Failed to load details');
     } finally {
       setDetailLoading(false);
@@ -104,6 +129,42 @@ export default function ShipmentHub() {
     return <span className={`font-medium text-sm ${styles[mode]}`}>{mode}</span>;
   };
 
+  const filteredData = statusFilter === 'ALL'
+    ? data
+    : data.filter(row => row.status === statusFilter);
+
+  const updateScenarioField = (index, field, value) => {
+    setScenarioForm(prev => prev.map((scenario, i) => (
+      i === index ? { ...scenario, [field]: value } : scenario
+    )));
+  };
+
+  const handleCompareScenarios = async () => {
+    const hasInvalidScenario = scenarioForm.some(
+      s => !s.origin || !s.destination || !s.distanceKm || !s.payloadTons || !s.transportMode || !s.vehicleId
+    );
+    if (hasInvalidScenario) {
+      toast.error('Fill all fields for both scenarios.');
+      return;
+    }
+
+    try {
+      setCompareLoading(true);
+      const scenarios = scenarioForm.map(s => ({
+        ...s,
+        distanceKm: parseFloat(s.distanceKm),
+        payloadTons: parseFloat(s.payloadTons),
+        vehicleId: s.vehicleId
+      }));
+      const response = await compareShipmentScenarios(scenarios);
+      setCompareResult(response);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to compare scenarios');
+    } finally {
+      setCompareLoading(false);
+    }
+  };
+
   return (
     <div className="p-8 max-w-7xl mx-auto h-full overflow-y-auto">
       <div className="flex justify-between items-end mb-8">
@@ -120,14 +181,76 @@ export default function ShipmentHub() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="p-4 border-b border-gray-200 bg-green-50/40">
+          <div className="flex items-center gap-2 mb-3">
+            <GitCompare size={16} className="text-green-700" />
+            <h3 className="font-semibold text-gray-900">Green Route Advisor (Estimated)</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {scenarioForm.map((scenario, index) => (
+              <div key={scenario.name} className="bg-white border border-gray-200 rounded-lg p-3">
+                <div className="text-xs font-bold text-gray-600 mb-2">{scenario.name}</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input className="border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="Origin" value={scenario.origin} onChange={e => updateScenarioField(index, 'origin', e.target.value)} />
+                  <input className="border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="Destination" value={scenario.destination} onChange={e => updateScenarioField(index, 'destination', e.target.value)} />
+                  <input type="number" step="0.1" className="border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="Distance km" value={scenario.distanceKm} onChange={e => updateScenarioField(index, 'distanceKm', e.target.value)} />
+                  <input type="number" step="0.1" className="border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="Payload tons" value={scenario.payloadTons} onChange={e => updateScenarioField(index, 'payloadTons', e.target.value)} />
+                  <select className="border border-gray-200 rounded px-2 py-1.5 text-sm bg-white" value={scenario.transportMode} onChange={e => updateScenarioField(index, 'transportMode', e.target.value)}>
+                    <option value="ROAD">Road</option>
+                    <option value="RAIL">Rail</option>
+                    <option value="SEA">Sea</option>
+                    <option value="AIR">Air</option>
+                  </select>
+                  <select className="border border-gray-200 rounded px-2 py-1.5 text-sm bg-white" value={scenario.vehicleId} onChange={e => updateScenarioField(index, 'vehicleId', e.target.value)}>
+                    <option value="" disabled>Select vehicle</option>
+                    {vehicles.map(v => (
+                      <option key={v.id} value={v.id}>{v.model} ({v.fuelType})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex items-center gap-3">
+            <button onClick={handleCompareScenarios} disabled={compareLoading} className="bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white px-3 py-2 rounded-lg text-sm font-medium">
+              {compareLoading ? 'Comparing...' : 'Compare Scenarios'}
+            </button>
+            {compareResult && (
+              <div className="text-sm text-gray-700">
+                Rule: <span className="font-semibold">{compareResult.rankingRule}</span> · Methodology: <span className="font-semibold">{compareResult.methodologyVersion}</span>
+              </div>
+            )}
+          </div>
+          {compareResult && (
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+              {compareResult.scenarios.map((scenario) => (
+                <div key={scenario.scenario} className={`rounded-lg border p-3 ${scenario.preferred ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold text-gray-900">{scenario.scenario}</span>
+                    {scenario.preferred && <span className="text-xs font-bold text-green-700">Preferred</span>}
+                  </div>
+                  <div className="text-sm text-gray-600">{scenario.origin} → {scenario.destination}</div>
+                  <div className="text-sm text-gray-600">{scenario.transportMode} · {scenario.vehicleModel}</div>
+                  <div className="mt-1 text-green-700 font-bold">{scenario.estimatedCo2} kg CO2e <span className="text-xs bg-green-100 px-1.5 py-0.5 rounded">{scenario.estimateLabel}</span></div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="p-4 border-b border-gray-200">
           <div className="relative inline-block">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <select className="pl-10 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none appearance-none bg-white font-medium text-gray-700">
-              <option>All Statuses</option>
-              <option>In Transit</option>
-              <option>Pending</option>
-              <option>Delivered</option>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="pl-10 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none appearance-none bg-white font-medium text-gray-700"
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="IN_TRANSIT">In Transit</option>
+              <option value="PENDING">Pending</option>
+              <option value="DELIVERED">Delivered</option>
+              <option value="DELAYED">Delayed</option>
             </select>
           </div>
         </div>
@@ -150,7 +273,7 @@ export default function ShipmentHub() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.map(row => (
+                {filteredData.map(row => (
                   <tr key={row.id} onClick={() => handleRowClick(row)} className="hover:bg-white hover:shadow-md hover:scale-[1.002] transition-all duration-200 cursor-pointer bg-white group">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-transparent">{row.trackingId}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 bg-transparent">{row.origin} &rarr; {row.destination}</td>
@@ -164,6 +287,13 @@ export default function ShipmentHub() {
                     </td>
                   </tr>
                 ))}
+                {filteredData.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-8 text-center text-sm text-gray-500">
+                      No shipments match the selected status filter.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
