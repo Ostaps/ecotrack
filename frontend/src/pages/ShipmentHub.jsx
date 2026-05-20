@@ -8,6 +8,7 @@ import Drawer from '../components/Drawer';
 
 export default function ShipmentHub() {
   const [data, setData] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
   const [vehicles, setVehicles] = useState([]);
   const [statusFilter, setStatusFilter] = useState('');
@@ -42,6 +43,7 @@ export default function ShipmentHub() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
     getVehicles(0, 100).then(res => setVehicles(res.content || res));
   }, []);
@@ -63,7 +65,7 @@ export default function ShipmentHub() {
       setIsAddModalOpen(false);
       setStatusFilter('');
       fetchData();
-    } catch (err) {
+    } catch {
       toast.error('Failed to create shipment');
     }
   };
@@ -75,7 +77,7 @@ export default function ShipmentHub() {
     try {
       const detail = await getShipmentDetail(row.id);
       setShipmentDetail(detail);
-    } catch (err) {
+    } catch {
       toast.error('Failed to load details');
     } finally {
       setDetailLoading(false);
@@ -179,7 +181,22 @@ export default function ShipmentHub() {
                       <ChevronRight size={18} className="text-gray-400 group-hover:text-green-500 transition-colors inline-block" />
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredData.map(row => (
+                    <tr key={row.id} onClick={() => handleRowClick(row)} className="hover:bg-white hover:shadow-md hover:scale-[1.002] transition-all duration-200 cursor-pointer bg-white group">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-transparent">{row.trackingId}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 bg-transparent">{row.origin} &rarr; {row.destination}</td>
+                      <td className="px-6 py-4 whitespace-nowrap bg-transparent">{getStatusBadge(row.status)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap bg-transparent">{getModeBadge(row.transportMode)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 bg-transparent">{row.distanceKm} km</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 bg-transparent">{row.payloadTons} t</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600 text-right bg-transparent">{row.calculatedCo2} kg</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right bg-transparent">
+                        <ChevronRight size={18} className="text-gray-400 group-hover:text-green-500 transition-colors inline-block" />
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
