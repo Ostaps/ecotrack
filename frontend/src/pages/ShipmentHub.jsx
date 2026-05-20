@@ -8,6 +8,7 @@ import Drawer from '../components/Drawer';
 
 export default function ShipmentHub() {
   const [data, setData] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
   const [vehicles, setVehicles] = useState([]);
   const [statusFilter, setStatusFilter] = useState('');
@@ -42,6 +43,7 @@ export default function ShipmentHub() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
     getVehicles(0, 100).then(res => setVehicles(res.content || res));
   }, []);
@@ -63,7 +65,7 @@ export default function ShipmentHub() {
       setIsAddModalOpen(false);
       setStatusFilter('');
       fetchData();
-    } catch (err) {
+    } catch {
       toast.error('Failed to create shipment');
     }
   };
@@ -75,7 +77,7 @@ export default function ShipmentHub() {
     try {
       const detail = await getShipmentDetail(row.id);
       setShipmentDetail(detail);
-    } catch (err) {
+    } catch {
       toast.error('Failed to load details');
     } finally {
       setDetailLoading(false);
@@ -105,6 +107,10 @@ export default function ShipmentHub() {
     };
     return <span className={`font-medium text-sm ${styles[mode]}`}>{mode}</span>;
   };
+
+  const filteredData = statusFilter
+    ? data.filter(row => row.status === statusFilter)
+    : data;
 
   return (
     <div className="p-8 max-w-7xl mx-auto h-full overflow-y-auto">
